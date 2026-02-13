@@ -5,9 +5,10 @@ use chrono::{DateTime, Utc};
 use client::{Client, UserStore, zed_urls};
 use cloud_api_types::Plan;
 use cloud_llm_client::{
-    CLIENT_SUPPORTS_STATUS_MESSAGES_HEADER_NAME, CLIENT_SUPPORTS_X_AI_HEADER_NAME, CompletionBody,
-    CompletionEvent, CountTokensBody, CountTokensResponse, ListModelsResponse,
-    SERVER_SUPPORTS_STATUS_MESSAGES_HEADER_NAME, ZED_VERSION_HEADER_NAME,
+    CLIENT_SUPPORTS_STATUS_MESSAGES_HEADER_NAME, CLIENT_SUPPORTS_STATUS_STREAM_ENDED_HEADER_NAME,
+    CLIENT_SUPPORTS_X_AI_HEADER_NAME, CompletionBody, CompletionEvent, CountTokensBody,
+    CountTokensResponse, ListModelsResponse, SERVER_SUPPORTS_STATUS_MESSAGES_HEADER_NAME,
+    ZED_VERSION_HEADER_NAME,
 };
 use feature_flags::{CloudThinkingEffortFeatureFlag, FeatureFlagAppExt as _};
 use futures::{
@@ -410,6 +411,7 @@ impl CloudLanguageModel {
                 .header("Content-Type", "application/json")
                 .header("Authorization", format!("Bearer {token}"))
                 .header(CLIENT_SUPPORTS_STATUS_MESSAGES_HEADER_NAME, "true")
+                .header(CLIENT_SUPPORTS_STATUS_STREAM_ENDED_HEADER_NAME, "true")
                 .body(serde_json::to_string(&body)?.into())?;
 
             let mut response = http_client.send(request).await?;
@@ -960,12 +962,13 @@ where
                     vec![Err(LanguageModelCompletionError::from(error))]
                 }
                 Ok(CompletionEvent::Status(event)) => {
-                    vec![
-                        LanguageModelCompletionEvent::from_completion_request_status(
-                            event,
-                            provider.clone(),
-                        ),
-                    ]
+                    LanguageModelCompletionEvent::from_completion_request_status(
+                        event,
+                        provider.clone(),
+                    )
+                    .transpose()
+                    .map(|event| vec![event])
+                    .unwrap_or_default()
                 }
                 Ok(CompletionEvent::Event(event)) => map_callback(event),
             })
