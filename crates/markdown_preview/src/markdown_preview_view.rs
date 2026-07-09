@@ -37,7 +37,8 @@ use zed_actions::{DecreaseBufferFontSize, IncreaseBufferFontSize, ResetBufferFon
 
 use crate::markdown_preview_settings::MarkdownPreviewSettings;
 use crate::{
-    OpenFollowingPreview, OpenPreview, OpenPreviewToTheSide, ScrollDown, ScrollDownByItem,
+    CopyAsPlainText, CopyRendered, OpenFollowingPreview, OpenPreview, OpenPreviewToTheSide,
+    ScrollDown, ScrollDownByItem,
 };
 use crate::{ScrollPageDown, ScrollPageUp, ScrollToBottom, ScrollToTop, ScrollUp, ScrollUpByItem};
 
@@ -946,6 +947,37 @@ impl MarkdownPreviewView {
             });
         }
     }
+
+    fn copy_rendered(
+        &mut self,
+        _: &CopyRendered,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let text = self.markdown.read(cx).to_plain_text();
+        let text = if text.is_empty() {
+            self.markdown.read(cx).source().to_string()
+        } else {
+            text
+        };
+        cx.write_to_clipboard(ClipboardItem::new_string(text));
+    }
+
+    fn copy_as_plain_text(
+        &mut self,
+        _: &CopyAsPlainText,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let text = self.markdown.read(cx).to_plain_text();
+        let text = if text.is_empty() {
+            self.markdown.read(cx).source().to_string()
+        } else {
+            text
+        };
+        cx.write_to_clipboard(ClipboardItem::new_string(text));
+    }
+
 }
 
 fn handle_url_click(
@@ -1119,6 +1151,17 @@ impl Item for MarkdownPreviewView {
         Some("Markdown Preview Opened")
     }
 
+    fn tab_extra_context_menu_actions(
+        &self,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Vec<(SharedString, Box<dyn gpui::Action>)> {
+        vec![
+            ("Copy Rendered Text".into(), Box::new(CopyRendered)),
+            ("Copy as Plaintext".into(), Box::new(CopyAsPlainText)),
+        ]
+    }
+
     fn added_to_workspace(
         &mut self,
         workspace: &mut Workspace,
@@ -1241,6 +1284,8 @@ impl Render for MarkdownPreviewView {
             .on_action(cx.listener(MarkdownPreviewView::increase_font_size))
             .on_action(cx.listener(MarkdownPreviewView::decrease_font_size))
             .on_action(cx.listener(MarkdownPreviewView::reset_font_size))
+            .on_action(cx.listener(MarkdownPreviewView::copy_rendered))
+            .on_action(cx.listener(MarkdownPreviewView::copy_as_plain_text))
             .w_full()
             .flex_1()
             .min_h_0()
@@ -1260,7 +1305,7 @@ impl Render for MarkdownPreviewView {
                             let max_width = MarkdownPreviewSettings::get_global(cx).max_width;
                             let content = right_click_menu("markdown-preview-context-menu")
                                 .trigger(move |_, _, _| markdown_element)
-                                .maybe_menu(move |window, cx| {
+                                .menu(move |window, cx| {
                                     let focus = window.focused(cx);
                                     let markdown = markdown.read(cx);
                                     let context_menu_link = markdown.context_menu_link().cloned();
@@ -1268,13 +1313,7 @@ impl Render for MarkdownPreviewView {
                                         markdown.context_menu_selected_text().cloned();
                                     let selected_markdown =
                                         markdown.context_menu_selected_markdown().cloned();
-                                    if context_menu_link.is_none()
-                                        && selected_text.is_none()
-                                        && selected_markdown.is_none()
-                                    {
-                                        return None;
-                                    }
-                                    Some(ContextMenu::build(window, cx, move |menu, _, _cx| {
+                                    ContextMenu::build(window, cx, move |menu, _, _cx| {
                                         menu.when_some(focus, |menu, focus| menu.context(focus))
                                             .when_some(selected_text, |menu, text| {
                                                 menu.entry(
@@ -1309,7 +1348,27 @@ impl Render for MarkdownPreviewView {
                                                     );
                                                 })
                                             })
-                                    }))
+                                            .entry(
+                                                "Copy Rendered Text",
+                                                Some(Box::new(CopyRendered)),
+                                                move |window, cx| {
+                                                    window.dispatch_action(
+                                                        Box::new(CopyRendered),
+                                                        cx,
+                                                    )
+                                                },
+                                            )
+                                            .entry(
+                                                "Copy as Plaintext",
+                                                Some(Box::new(CopyAsPlainText)),
+                                                move |window, cx| {
+                                                    window.dispatch_action(
+                                                        Box::new(CopyAsPlainText),
+                                                        cx,
+                                                    )
+                                                },
+                                            )
+                                    })
                                 });
                             div()
                                 .w_full()

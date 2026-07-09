@@ -816,6 +816,63 @@ impl Markdown {
         }
     }
 
+    /// Returns an approximate plain-text rendering of the full markdown document.
+    ///
+    /// This walks parsed events and joins visible text runs (headings, paragraphs,
+    /// code, list items, etc.) without markdown syntax markers.
+    pub fn to_plain_text(&self) -> String {
+        let source = self.parsed_markdown.source();
+        let mut out = String::new();
+        let mut needs_block_break = false;
+
+        for (range, event) in self.parsed_markdown.events().iter() {
+            match event {
+                MarkdownEvent::RootStart => {
+                    if needs_block_break && !out.is_empty() {
+                        out.push_str("\n\n");
+                    }
+                    needs_block_break = false;
+                }
+                MarkdownEvent::RootEnd(_) => {
+                    needs_block_break = true;
+                }
+                MarkdownEvent::Text
+                | MarkdownEvent::Code
+                | MarkdownEvent::Html
+                | MarkdownEvent::InlineHtml => {
+                    out.push_str(&source[range.clone()]);
+                }
+                MarkdownEvent::SubstitutedText(text) | MarkdownEvent::SubstitutedCode(text) => {
+                    out.push_str(text);
+                }
+                MarkdownEvent::SoftBreak => out.push(' '),
+                MarkdownEvent::HardBreak => out.push('\n'),
+                MarkdownEvent::Rule => {
+                    if !out.is_empty() && !out.ends_with('\n') {
+                        out.push('\n');
+                    }
+                    out.push_str("---");
+                    needs_block_break = true;
+                }
+                MarkdownEvent::TaskListMarker(checked) => {
+                    out.push_str(if *checked { "[x] " } else { "[ ] " });
+                }
+                MarkdownEvent::FootnoteReference(label) => {
+                    out.push_str(&format!("[^{}]", label));
+                }
+                MarkdownEvent::End(MarkdownTagEnd::Item) => out.push('\n'),
+                MarkdownEvent::Start(_) | MarkdownEvent::End(_) => {}
+            }
+        }
+
+        out.lines()
+            .map(str::trim_end)
+            .collect::<Vec<_>>()
+            .join("\n")
+            .trim()
+            .to_string()
+    }
+
     pub fn set_search_highlights(
         &mut self,
         highlights: Vec<Range<usize>>,
