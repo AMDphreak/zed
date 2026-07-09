@@ -17,6 +17,7 @@ pub mod path_link;
 mod persistence;
 pub mod searchable;
 pub mod security_modal;
+pub mod large_file_modal;
 pub mod shared_screen;
 pub use shared_screen::SharedScreen;
 pub mod focus_follows_mouse;
